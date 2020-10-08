@@ -20,10 +20,12 @@
 
 package com.seagates3.authserver;
 
+import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.management.ManagementFactory;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -131,19 +133,43 @@ public class AuthServerConfig {
      * @throws GeneralSecurityException
      */
     public static void loadCredentials() throws GeneralSecurityException, Exception {
-
-        Properties authServerConfig = AuthServerConfig.authServerConfig;
-        String encryptedPasswd = authServerConfig.getProperty("ldapLoginPW");
-        Path keyStoreFilePath = getKeyStorePath();
-        PrivateKey privateKey = JKSUtil.getPrivateKeyFromJKS(
-                                keyStoreFilePath.toString(), getCertAlias(),
-                                getKeyStorePassword());
-        if (privateKey == null) {
-             throw new GeneralSecurityException("Failed to find Private Key ["
-                + keyStoreFilePath + "].");
-        }
-        ldapPasswd = RSAEncryptDecryptUtil.decrypt(encryptedPasswd,
-                     privateKey);
+       logger = LoggerFactory.getLogger(AuthServerConfig.class.getName());
+       String keystorePasswd = null;
+       String encryptedPasswd = authServerConfig.getProperty("ldapLoginPW");
+       Path keyStoreFilePath = getKeyStorePath();
+       try {
+         String cmd = authServerConfig.getProperty("cortexSecCmd");
+         logger.info("Command is : " + cmd);
+         Process cortxsec = Runtime.getRuntime().exec(cmd);
+         int exitVal = cortxsec.waitFor();
+         if (exitVal != 0) {
+           throw new IOException("Process exited with error code");
+         }
+         BufferedReader reader = new BufferedReader(
+             new InputStreamReader(cortxsec.getInputStream()));
+         String line;
+         if ((line = reader.readLine()) != null) {
+           keystorePasswd = line;
+         } else {
+           throw new IOException("Input Stream null");
+         }
+       }
+       catch (IOException e) {
+         // logger.info(" Default ldap load credentials due to error - " +
+         // e.getMessage());
+         logger.info(" Default ldap load credentials due to error - " +
+                     e.getMessage());
+         e.printStackTrace();
+         keystorePasswd = getKeyStorePassword();
+       }
+       logger.info("keystore passwd is : " + keystorePasswd);
+       PrivateKey privateKey = JKSUtil.getPrivateKeyFromJKS(
+           keyStoreFilePath.toString(), getCertAlias(), keystorePasswd);
+       if (privateKey == null) {
+         throw new GeneralSecurityException("Failed to find Private Key [" +
+                                            keyStoreFilePath + "].");
+       }
+       ldapPasswd = RSAEncryptDecryptUtil.decrypt(encryptedPasswd, privateKey);
     }
 
     /**
