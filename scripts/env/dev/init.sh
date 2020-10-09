@@ -33,6 +33,7 @@ os_full_version=""
 os_major_version=""
 os_minor_version=""
 os_build_num=""
+ansible_automation=0
 
 
 unsupported_os() {
@@ -92,7 +93,7 @@ fi
 if [[ $# -eq 0 ]] ; then
   source ${S3_SRC_DIR}/scripts/env/common/setup-yum-repos.sh
 else
-  while getopts "ah" x; do
+  while getopts "ahs" x; do
       case "${x}" in
           a)
               yum install createrepo -y
@@ -100,6 +101,9 @@ else
               read -p "Git Access Token:" git_access_token
               source ${S3_SRC_DIR}/scripts/env/common/create-cortx-repo.sh -G $git_access_token
               ;;
+          s)
+             ansible_automation=1;
+             ;;
           *)
               usage
               ;;
@@ -186,7 +190,12 @@ cp -f ./hosts ./hosts_local
 sed -i "s/^xx.xx.xx.xx/127.0.0.1/" ./hosts_local
 
 # Setup dev env
-ansible-playbook -i ./hosts_local --connection local setup_s3dev_centos77_8.yml -v  -k --extra-vars "s3_src=${S3_SRC_DIR}"
+if [ $ansible_automation -eq 1 ]
+then
+   ansible-playbook -i ./hosts_local --connection local setup_s3dev_centos77_8.yml -v --extra-vars "s3_src=${S3_SRC_DIR} openldappasswd=sgiammin ldapiamadminpasswd=ldapadmin"
+else
+   ansible-playbook -i ./hosts_local --connection local setup_s3dev_centos77_8.yml -v -k --extra-vars "s3_src=${S3_SRC_DIR}"
+fi
 
 rm -f ./hosts_local
 
